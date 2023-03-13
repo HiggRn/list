@@ -1,3 +1,4 @@
 # list
-A queue or single linked list in Rust.
+
+A singly-linked stack in Rust.
 Just for practice.
