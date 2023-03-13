@@ -1,136 +1,78 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::mem;
 
-type SingleLink<T> = Option<Rc<RefCell<Node<T>>>>;
-
-#[derive(Clone)]
-struct Node<T> {
-    value: T,
-    next: SingleLink<T>
+pub struct List {
+    head: Link,
 }
 
-impl<T> Node<T> {
-    pub fn new(value: T) -> Rc<RefCell<Node<T>>> {
-        Rc::new(RefCell::new(Node {
-            value,
-            next: None
-        }))
-    }
+enum Link {
+    Empty,
+    More(Box<Node>),
 }
 
-pub struct List<T> {
-    head: SingleLink<T>,
-    tail: SingleLink<T>,
-    pub length: usize
+struct Node {
+    elem: i32,
+    next: Link,
 }
 
-impl<T> List<T> {
-    pub fn new() -> List<T> {
-        List {
-            head: None,
-            tail: None,
-            length: 0
-        }
+impl List {
+    pub fn new() -> Self {
+        Self { head: Link::Empty }
     }
 
-    pub fn append(&mut self, value: T) {
-        let new = Node::new(value);
-        match self.tail.take() {
-            Some(old) => old.borrow_mut().next = Some(new.clone()),
-            None => self.head = Some(new.clone())
-        }
-        self.length += 1;
-        self.tail = Some(new);
+    pub fn push(&mut self, elem: i32) {
+        let new_node = Box::new(Node {
+            elem,
+            next: mem::replace(&mut self.head, Link::Empty),
+        });
+
+        self.head = Link::More(new_node);
     }
 
-    pub fn pop(&mut self) -> Option<T> {
-        self.head.take().map(|head| {
-            if let Some(next) = head.borrow_mut().next.take() {
-                self.head = Some(next);
-            } else {
-                self.tail.take();
+    pub fn pop(&mut self) -> Option<i32> {
+        match mem::replace(&mut self.head, Link::Empty) {
+            Link::Empty => None,
+            Link::More(node) => {
+                self.head = node.next;
+                Some(node.elem)
             }
-            self.length -= 1;
-            Rc::try_unwrap(head)
-                .ok()
-                .expect("pop error")
-                .into_inner()
-                .value
-        })
+        }
+    }
+}
+
+impl Drop for List {
+    fn drop(&mut self) {
+        let mut cur_link = mem::replace(&mut self.head, Link::Empty);
+
+        while let Link::More(mut boxed_node) = cur_link {
+            cur_link = mem::replace(&mut boxed_node.next, Link::Empty);
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod test {
+    use super::List;
 
     #[test]
-    fn test_new() {
-        let list: List<i32> = List::new();
-        if let Some(_) = list.head {
-            panic!("head error");
-        }
-        if let Some(_) = list.tail {
-            panic!("tail error");
-        }
-        assert_eq!(list.length, 0);
-    }
-
-    #[test]
-    fn test_append() {
+    fn basics() {
         let mut list = List::new();
-        list.append(42);
-        let Some(head1) = list.head.as_ref() else {
-            panic!("head error");
-        };
-        assert_eq!(head1.borrow().value, 42);
-        let Some(tail1) = list.tail.as_ref() else {
-            panic!("tail error");
-        };
-        assert_eq!(tail1.borrow().value, 42);
-        assert_eq!(list.length, 1);
 
-        list.append(36);
-        let Some(head2) = list.head.as_ref() else {
-            panic!("head error");
-        };
-        assert_eq!(head2.borrow().value, 42);
-        let Some(tail2) = list.tail.as_ref() else {
-            panic!("tail error");
-        };
-        assert_eq!(tail2.borrow().value, 36);
-        assert_eq!(list.length, 2);
-    }
+        assert_eq!(list.pop(), None);
 
-    #[test]
-    fn test_pop() {
-        let mut list = List::new();
-        list.append(42);
-        list.append(36);
-        list.append(30);
+        list.push(1);
+        list.push(2);
+        list.push(3);
 
-        let Some(first) = list.pop() else {
-            panic!("pop error");
-        };
-        assert_eq!(first, 42);
-        assert_eq!(list.length, 2);
+        assert_eq!(list.pop(), Some(3));
+        assert_eq!(list.pop(), Some(2));
 
-        let Some(second) = list.pop() else {
-            panic!("pop error");
-        };
-        assert_eq!(second, 36);
-        assert_eq!(list.length, 1);
+        list.push(4);
+        list.push(5);
 
-        let Some(third) = list.pop() else {
-            panic!("pop error");
-        };
-        assert_eq!(third, 30);
-        if let Some(_) = list.head {
-            panic!("head error");
-        }
-        if let Some(_) = list.tail {
-            panic!("tail error");
-        }
-        assert_eq!(list.length, 0);
+        assert_eq!(list.pop(), Some(5));
+        assert_eq!(list.pop(), Some(4));
+
+        assert_eq!(list.pop(), Some(1));
+        assert_eq!(list.pop(), None);
     }
 }
